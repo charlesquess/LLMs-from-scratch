@@ -3,7 +3,7 @@
 #   - https://www.manning.com/books/build-a-large-language-model-from-scratch
 # Code: https://github.com/rasbt/LLMs-from-scratch
 
-# File for internal use (unit tests)
+# 供内部使用的文件（单元测试）
 
 from gpt import main
 
