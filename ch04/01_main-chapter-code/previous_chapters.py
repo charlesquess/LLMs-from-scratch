@@ -1,7 +1,7 @@
-# Copyright (c) Sebastian Raschka under Apache License 2.0 (see LICENSE.txt).
-# Source for "Build a Large Language Model From Scratch"
+# 版权所有 (c) Sebastian Raschka，遵循 Apache License 2.0 (见 LICENSE.txt)
+# 来源："Build a Large Language Model From Scratch"
 #   - https://www.manning.com/books/build-a-large-language-model-from-scratch
-# Code: https://github.com/rasbt/LLMs-from-scratch
+# 代码仓库：https://github.com/rasbt/LLMs-from-scratch
 
 import tiktoken
 import torch
@@ -11,16 +11,16 @@ from torch.utils.data import Dataset, DataLoader
 
 class GPTDatasetV1(Dataset):
     def __init__(self, txt, tokenizer, max_length, stride):
-        self.input_ids = []
-        self.target_ids = []
+        self.input_ids = []  # 存储输入token ID序列
+        self.target_ids = []  # 存储目标token ID序列
 
-        # Tokenize the entire text
+        # 使用tokenizer编码整个文本，允许特殊token <|endoftext|>
         token_ids = tokenizer.encode(txt, allowed_special={"<|endoftext|>"})
 
-        # Use a sliding window to chunk the book into overlapping sequences of max_length
+        # 使用滑动窗口将文本分割为重叠的max_length长度序列
         for i in range(0, len(token_ids) - max_length, stride):
-            input_chunk = token_ids[i:i + max_length]
-            target_chunk = token_ids[i + 1: i + max_length + 1]
+            input_chunk = token_ids[i:i + max_length]  # 输入片段
+            target_chunk = token_ids[i + 1: i + max_length + 1]  # 目标片段(右移一位)
             self.input_ids.append(torch.tensor(input_chunk))
             self.target_ids.append(torch.tensor(target_chunk))
 
@@ -33,13 +33,13 @@ class GPTDatasetV1(Dataset):
 
 def create_dataloader_v1(txt, batch_size=4, max_length=256,
                          stride=128, shuffle=True, drop_last=True, num_workers=0):
-    # Initialize the tokenizer
+    # 初始化tokenizer(使用GPT2的分词器)
     tokenizer = tiktoken.get_encoding("gpt2")
 
-    # Create dataset
+    # 创建数据集实例
     dataset = GPTDatasetV1(txt, tokenizer, max_length, stride)
 
-    # Create dataloader
+    # 创建数据加载器
     dataloader = DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=num_workers)
 
@@ -49,54 +49,56 @@ def create_dataloader_v1(txt, batch_size=4, max_length=256,
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
         super().__init__()
-        assert d_out % num_heads == 0, "d_out must be divisible by num_heads"
+        assert d_out % num_heads == 0, "d_out必须能被num_heads整除"
 
-        self.d_out = d_out
-        self.num_heads = num_heads
-        self.head_dim = d_out // num_heads  # Reduce the projection dim to match desired output dim
+        self.d_out = d_out  # 输出维度
+        self.num_heads = num_heads  # 注意力头数
+        self.head_dim = d_out // num_heads  # 每个头的维度
 
-        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
-        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
-        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
-        self.out_proj = nn.Linear(d_out, d_out)  # Linear layer to combine head outputs
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)  # 查询矩阵
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)    # 键矩阵
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)  # 值矩阵
+        self.out_proj = nn.Linear(d_out, d_out)  # 输出投影层，用于合并多头输出
         self.dropout = nn.Dropout(dropout)
+        # 注册因果掩码(上三角矩阵)，防止关注未来token
         self.register_buffer('mask', torch.triu(torch.ones(context_length, context_length), diagonal=1))
 
     def forward(self, x):
-        b, num_tokens, d_in = x.shape
+        b, num_tokens, d_in = x.shape  # batch大小, token数量, 输入维度
 
-        keys = self.W_key(x)  # Shape: (b, num_tokens, d_out)
+        keys = self.W_key(x)   # 形状: (b, num_tokens, d_out)
         queries = self.W_query(x)
         values = self.W_value(x)
 
-        # We implicitly split the matrix by adding a `num_heads` dimension
-        # Unroll last dim: (b, num_tokens, d_out) -> (b, num_tokens, num_heads, head_dim)
+        # 通过添加num_heads维度隐式分割矩阵
+        # 展开最后一个维度: (b, num_tokens, d_out) -> (b, num_tokens, num_heads, head_dim)
         keys = keys.view(b, num_tokens, self.num_heads, self.head_dim)
         values = values.view(b, num_tokens, self.num_heads, self.head_dim)
         queries = queries.view(b, num_tokens, self.num_heads, self.head_dim)
 
-        # Transpose: (b, num_tokens, num_heads, head_dim) -> (b, num_heads, num_tokens, head_dim)
+        # 转置: (b, num_tokens, num_heads, head_dim) -> (b, num_heads, num_tokens, head_dim)
         keys = keys.transpose(1, 2)
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
 
-        # Compute scaled dot-product attention (aka self-attention) with a causal mask
-        attn_scores = queries @ keys.transpose(2, 3)  # Dot product for each head
+        # 计算缩放点积注意力(自注意力)并使用因果掩码
+        attn_scores = queries @ keys.transpose(2, 3)  # 每个头的点积
 
-        # Original mask truncated to the number of tokens and converted to boolean
+        # 将原始掩码截断到当前token数并转换为布尔类型
         mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
 
-        # Use the mask to fill attention scores
+        # 使用掩码填充注意力分数(将未来token设为负无穷)
         attn_scores.masked_fill_(mask_bool, -torch.inf)
 
+        # 计算注意力权重
         attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
-        attn_weights = self.dropout(attn_weights)
+        attn_weights = self.dropout(attn_weights)  # 应用dropout
 
-        # Shape: (b, num_tokens, num_heads, head_dim)
+        # 形状: (b, num_tokens, num_heads, head_dim)
         context_vec = (attn_weights @ values).transpose(1, 2)
 
-        # Combine heads, where self.d_out = self.num_heads * self.head_dim
+        # 合并多头输出，其中self.d_out = self.num_heads * self.head_dim
         context_vec = context_vec.contiguous().view(b, num_tokens, self.d_out)
-        context_vec = self.out_proj(context_vec)  # optional projection
+        context_vec = self.out_proj(context_vec)  # 可选投影
 
         return context_vec
