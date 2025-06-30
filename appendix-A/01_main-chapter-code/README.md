@@ -1,12 +1,12 @@
-# Appendix A: Introduction to PyTorch
+# 附录A: PyTorch简介
 
-### Main Chapter Code
+### 主章节代码
 
-- [code-part1.ipynb](code-part1.ipynb) contains all the section A.1 to A.8 code as it appears in the chapter
-- [code-part2.ipynb](code-part2.ipynb) contains all the section A.9 GPU code as it appears in the chapter 
-- [DDP-script.py](DDP-script.py) contains the script to demonstrate multi-GPU usage (note that Jupyter Notebooks only support single GPUs, so this is a script, not a notebook). You can run it as `python DDP-script.py`. If your machine has more than 2 GPUs, run it as `CUDA_VISIBLE_DEVIVES=0,1 python DDP-script.py`.
-- [exercise-solutions.ipynb](exercise-solutions.ipynb) contains the exercise solutions for this chapter
+- [code-part1.ipynb](code-part1.ipynb) 包含章节中A.1到A.8部分的所有代码
+- [code-part2.ipynb](code-part2.ipynb) 包含章节中A.9 GPU部分的所有代码
+- [DDP-script.py](DDP-script.py) 包含演示多GPU使用的脚本(注意Jupyter Notebook仅支持单GPU，所以这是一个脚本而非notebook)。您可以运行`python DDP-script.py`。如果您的机器有超过2个GPU，可以运行`CUDA_VISIBLE_DEVIVES=0,1 python DDP-script.py`。
+- [exercise-solutions.ipynb](exercise-solutions.ipynb) 包含本章的练习解答
 
-### Optional Code
+### 可选代码
 
-- [DDP-script-torchrun.py](DDP-script-torchrun.py) is an optional version of the `DDP-script.py` script that runs via the PyTorch `torchrun` command instead of spawning and managing multiple processes ourselves via `multiprocessing.spawn`. The `torchrun` command has the advantage of automatically handling distributed initialization, including multi-node coordination, which slightly simplifies the setup process. You can use this script via `torchrun --nproc_per_node=2 DDP-script-torchrun.py`
+- [DDP-script-torchrun.py](DDP-script-torchrun.py) 是`DDP-script.py`的可选版本，使用PyTorch的`torchrun`命令而非通过`multiprocessing.spawn`自行管理多进程。`torchrun`命令的优势在于自动处理分布式初始化，包括多节点协调，略微简化了设置过程。您可以通过`torchrun --nproc_per_node=2 DDP-script-torchrun.py`运行此脚本
