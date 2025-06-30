@@ -32,10 +32,11 @@ class MultiHeadAttention(nn.Module):
         )
 
         ####################################################
-        # NEW
-        self.register_buffer("cache_k", None, persistent=False)
-        self.register_buffer("cache_v", None, persistent=False)
-        self.ptr_current_pos = 0
+        # KV缓存实现
+        # 初始化键值缓存缓冲区
+        self.register_buffer("cache_k", None, persistent=False)  # 键缓存
+        self.register_buffer("cache_v", None, persistent=False)  # 值缓存
+        self.ptr_current_pos = 0  # 当前缓存位置指针
         ####################################################
 
     def forward(self, x, use_cache=False):
@@ -54,11 +55,14 @@ class MultiHeadAttention(nn.Module):
         ####################################################
         # NEW
         if use_cache:
-            if self.cache_k is None:
+            # 初始化或更新KV缓存
+            if self.cache_k is None:  # 首次使用缓存
                 self.cache_k, self.cache_v = keys_new, values_new
-            else:
+            else:  # 已有缓存则追加新键值
+                # 沿序列维度拼接新键值 (dim=1)
                 self.cache_k = torch.cat([self.cache_k, keys_new], dim=1)
                 self.cache_v = torch.cat([self.cache_v, values_new], dim=1)
+            # 使用缓存中的键值
             keys, values = self.cache_k, self.cache_v
         else:
             keys, values = keys_new, values_new
@@ -77,10 +81,13 @@ class MultiHeadAttention(nn.Module):
         num_tokens_Q = queries.shape[-2]
         num_tokens_K = keys.shape[-2]
         if use_cache:
+            # 使用缓存时的掩码处理
+            # 只关注当前token位置的掩码
             mask_bool = self.mask.bool()[
-                self.ptr_current_pos:self.ptr_current_pos + num_tokens_Q, :num_tokens_K
+                self.ptr_current_pos:self.ptr_current_pos + num_tokens_Q, 
+                :num_tokens_K
             ]
-            self.ptr_current_pos += num_tokens_Q
+            self.ptr_current_pos += num_tokens_Q  # 更新位置指针
         ####################################################
         # Original mask truncated to the number of tokens and converted to boolean
         else:
@@ -104,8 +111,9 @@ class MultiHeadAttention(nn.Module):
     ####################################################
     # NEW
     def reset_cache(self):
-        self.cache_k, self.cache_v = None, None
-        self.ptr_current_pos = 0
+        """重置KV缓存"""
+        self.cache_k, self.cache_v = None, None  # 清空缓存
+        self.ptr_current_pos = 0  # 重置位置指针
     ####################################################
 
 
@@ -243,9 +251,10 @@ class GPTModel(nn.Module):
     ####################################################
     # NEW
     def reset_kv_cache(self):
+        """重置模型中所有Transformer块的KV缓存"""
         for blk in self.trf_blocks:
-            blk.att.reset_cache()
-        self.current_pos = 0
+            blk.att.reset_cache()  # 重置每个注意力块的缓存
+        self.current_pos = 0  # 重置模型位置计数器
     ####################################################
 
 
@@ -277,23 +286,25 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
 
 ####################################################
 # NEW
-def generate_text_simple_cached(model, idx, max_new_tokens,
+def generate_text_simple_cached(model, idx, max_new_tokens, 
                                 context_size=None, use_cache=True):
-    model.eval()
+    """带KV缓存的文本生成函数"""
+    model.eval()  # 设置为评估模式
     ctx_len = context_size or model.pos_emb.num_embeddings
 
     with torch.no_grad():
         if use_cache:
-            # Init cache with full prompt
-            model.reset_kv_cache()
-            logits = model(idx[:, -ctx_len:], use_cache=True)
+            # 1. 初始化KV缓存(使用完整提示)
+            model.reset_kv_cache()  # 重置所有缓存
+            logits = model(idx[:, -ctx_len:], use_cache=True)  # 初始前向传播填充缓存
 
+            # 2. 逐步生成新token
             for _ in range(max_new_tokens):
-                # a) pick the token with the highest log-probability (greedy sampling)
+                # a) 贪心采样:选择概率最高的token
                 next_idx = logits[:, -1].argmax(dim=-1, keepdim=True)
-                # b) append it to the running sequence
+                # b) 将新token追加到序列中
                 idx = torch.cat([idx, next_idx], dim=1)
-                # c) feed model only the new token
+                # c) 仅用新token进行前向传播(利用缓存)
                 logits = model(next_idx, use_cache=True)
         else:
             for _ in range(max_new_tokens):

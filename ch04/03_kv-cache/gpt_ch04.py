@@ -32,11 +32,13 @@ class MultiHeadAttention(nn.Module):
         )
 
     def forward(self, x):
+        # 输入x形状: (batch_size, num_tokens, d_in)
         b, num_tokens, d_in = x.shape
 
-        keys = self.W_key(x)  # Shape: (b, num_tokens, d_out)
-        values = self.W_value(x)
-        queries = self.W_query(x)
+        # 计算键、值、查询向量
+        keys = self.W_key(x)  # 形状: (b, num_tokens, d_out)
+        values = self.W_value(x)  # 值向量
+        queries = self.W_query(x)  # 查询向量
 
         # We implicitly split the matrix by adding a `num_heads` dimension
         # Unroll last dim: (b, num_tokens, d_out) -> (b, num_tokens, num_heads, head_dim)
@@ -52,7 +54,8 @@ class MultiHeadAttention(nn.Module):
         # Compute scaled dot-product attention (aka self-attention) with a causal mask
         attn_scores = queries @ keys.transpose(2, 3)  # Dot product for each head
 
-        # Original mask truncated to the number of tokens and converted to boolean
+        # 将原始掩码截断到token数量并转换为布尔类型
+        # 用于实现因果注意力(防止看到未来信息)
         mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
 
         # Use the mask to fill attention scores
@@ -82,9 +85,14 @@ class LayerNorm(nn.Module):
         self.shift = nn.Parameter(torch.zeros(emb_dim))
 
     def forward(self, x):
-        mean = x.mean(dim=-1, keepdim=True)
-        var = x.var(dim=-1, keepdim=True, unbiased=False)
+        # 计算输入x在最后一个维度的均值和方差
+        mean = x.mean(dim=-1, keepdim=True)  # 均值
+        var = x.var(dim=-1, keepdim=True, unbiased=False)  # 方差
+        
+        # 归一化计算: (x - mean)/sqrt(var + eps)
         norm_x = (x - mean) / torch.sqrt(var + self.eps)
+        
+        # 应用可学习的缩放和平移参数
         return self.scale * norm_x + self.shift
 
 
@@ -128,12 +136,16 @@ class TransformerBlock(nn.Module):
         self.drop_shortcut = nn.Dropout(cfg["drop_rate"])
 
     def forward(self, x):
-        # Shortcut connection for attention block
+        # 注意力块的残差连接
+        # 1. 保留原始输入作为shortcut
         shortcut = x
-        x = self.norm1(x)
-        x = self.att(x)   # Shape [batch_size, num_tokens, emb_size]
-        x = self.drop_shortcut(x)
-        x = x + shortcut  # Add the original input back
+        # 2. 层归一化 -> 多头注意力 -> dropout
+        x = self.norm1(x)  # 层归一化
+        x = self.att(x)    # 多头注意力, 形状[batch_size, num_tokens, emb_size]
+        x = self.drop_shortcut(x)  # dropout
+        
+        # 3. 添加残差连接(原始输入)
+        x = x + shortcut
 
         # Shortcut connection for feed-forward block
         shortcut = x
@@ -159,10 +171,15 @@ class GPTModel(nn.Module):
         self.out_head = nn.Linear(cfg["emb_dim"], cfg["vocab_size"], bias=False)
 
     def forward(self, in_idx):
+        # 获取输入形状
         batch_size, seq_len = in_idx.shape
-        tok_embeds = self.tok_emb(in_idx)
-        pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
-        x = tok_embeds + pos_embeds  # Shape [batch_size, num_tokens, emb_size]
+        
+        # 1. 获取token嵌入和位置嵌入
+        tok_embeds = self.tok_emb(in_idx)  # token嵌入
+        pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))  # 位置嵌入
+        
+        # 2. 合并token和位置信息
+        x = tok_embeds + pos_embeds  # 形状[batch_size, num_tokens, emb_size]
         x = self.drop_emb(x)
         x = self.trf_blocks(x)
         x = self.final_norm(x)
@@ -171,9 +188,12 @@ class GPTModel(nn.Module):
 
 
 def generate_text_simple(model, idx, max_new_tokens, context_size):
-    model.eval()
-    # idx is (B, T) array of indices in the current context
+    """简单文本生成函数"""
+    model.eval()  # 设置为评估模式
+    
+    # idx是当前上下文的(B, T)索引数组
     for _ in range(max_new_tokens):
+        # 生成新token的核心循环
 
         # Crop current context if it exceeds the supported context size
         # E.g., if LLM supports only 5 tokens, and the context size is 10
