@@ -1,9 +1,9 @@
-# Copyright (c) Sebastian Raschka under Apache License 2.0 (see LICENSE.txt).
-# Source for "Build a Large Language Model From Scratch"
+# 版权所有 (c) Sebastian Raschka，遵循 Apache License 2.0（见 LICENSE.txt）。
+# 书籍《从零开始构建大语言模型》的源代码
 #   - https://www.manning.com/books/build-a-large-language-model-from-scratch
-# Code: https://github.com/rasbt/LLMs-from-scratch
+# 代码仓库：https://github.com/rasbt/LLMs-from-scratch
 #
-# A minimal instruction finetuning file based on the code in chapter 7
+# 基于第7章代码的最小指令微调实现
 
 from functools import partial
 from importlib.metadata import version
@@ -19,7 +19,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-# Import from local files in this folder
+# 从本地文件导入
 from gpt_download import download_and_load_gpt2
 from previous_chapters import (
     calc_loss_loader,
@@ -36,11 +36,11 @@ class InstructionDataset(Dataset):
     def __init__(self, data, tokenizer):
         self.data = data
 
-        # Pre-tokenize texts
+        # 预分词文本
         self.encoded_texts = []
         for entry in data:
             instruction_plus_input = format_input(entry)
-            response_text = f"\n\n### Response:\n{entry['output']}"
+            response_text = f"\n\n### 响应:\n{entry['output']}"
             full_text = instruction_plus_input + response_text
             self.encoded_texts.append(
                 tokenizer.encode(full_text)
@@ -60,28 +60,40 @@ def custom_collate_fn(
     allowed_max_length=None,
     device="cpu"
 ):
-    # Find the longest sequence in the batch
+    """自定义数据批处理函数
+    
+    参数:
+        batch: 数据批次
+        pad_token_id: 填充token的ID
+        ignore_index: 忽略的索引值
+        allowed_max_length: 允许的最大长度
+        device: 目标设备
+        
+    返回:
+        处理后的输入张量和目标张量
+    """
+    # 找出批次中最长的序列
     batch_max_length = max(len(item)+1 for item in batch)
 
-    # Pad and prepare inputs and targets
+    # 填充并准备输入和目标
     inputs_lst, targets_lst = [], []
 
     for item in batch:
         new_item = item.copy()
-        # Add an <|endoftext|> token
+        # 添加一个<|endoftext|> token
         new_item += [pad_token_id]
-        # Pad sequences to max_length
+        # 将序列填充到max_length
         padded = new_item + [pad_token_id] * (batch_max_length - len(new_item))
-        inputs = torch.tensor(padded[:-1])  # Truncate the last token for inputs
-        targets = torch.tensor(padded[1:])  # Shift +1 to the right for targets
+        inputs = torch.tensor(padded[:-1])  # 截取最后一个token作为输入
+        targets = torch.tensor(padded[1:])  # 向右移动1位作为目标
 
-        # New: Replace all but the first padding tokens in targets by ignore_index
+        # 新功能：将目标中除第一个填充token外的其他填充token替换为ignore_index
         mask = targets == pad_token_id
         indices = torch.nonzero(mask).squeeze()
         if indices.numel() > 1:
             targets[indices[1:]] = ignore_index
 
-        # New: Optionally truncate to maximum sequence length
+        # 新功能：可选地截断到最大序列长度
         if allowed_max_length is not None:
             inputs = inputs[:allowed_max_length]
             targets = targets[:allowed_max_length]
@@ -89,7 +101,7 @@ def custom_collate_fn(
         inputs_lst.append(inputs)
         targets_lst.append(targets)
 
-    # Convert list of inputs and targets to tensors and transfer to target device
+    # 将输入和目标列表转换为张量并转移到目标设备
     inputs_tensor = torch.stack(inputs_lst).to(device)
     targets_tensor = torch.stack(targets_lst).to(device)
 
@@ -97,7 +109,15 @@ def custom_collate_fn(
 
 
 def download_and_load_file(file_path, url):
-
+    """下载并加载文件
+    
+    参数:
+        file_path: 本地文件路径
+        url: 远程文件URL
+        
+    返回:
+        加载的数据
+    """
     if not os.path.exists(file_path):
         with urllib.request.urlopen(url) as response:
             text_data = response.read().decode("utf-8")
@@ -111,83 +131,104 @@ def download_and_load_file(file_path, url):
 
 
 def format_input(entry):
+    """格式化输入文本
+    
+    参数:
+        entry: 包含指令和输入的数据条目
+        
+    返回:
+        格式化后的文本
+    """
     instruction_text = (
-        f"Below is an instruction that describes a task. "
-        f"Write a response that appropriately completes the request."
-        f"\n\n### Instruction:\n{entry['instruction']}"
+        f"以下是一个描述任务的指令。"
+        f"请编写一个适当完成请求的响应。"
+        f"\n\n### 指令:\n{entry['instruction']}"
     )
 
-    input_text = f"\n\n### Input:\n{entry['input']}" if entry["input"] else ""
+    input_text = f"\n\n### 输入:\n{entry['input']}" if entry["input"] else ""
 
     return instruction_text + input_text
 
 
 def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
+    """绘制损失曲线
+    
+    参数:
+        epochs_seen: 已训练的epoch数
+        tokens_seen: 已处理的token数
+        train_losses: 训练损失列表
+        val_losses: 验证损失列表
+    """
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
-    # Plot training and validation loss against epochs
-    ax1.plot(epochs_seen, train_losses, label="Training loss")
-    ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")
+    # 绘制训练和验证损失随epoch的变化
+    ax1.plot(epochs_seen, train_losses, label="训练损失")
+    ax1.plot(epochs_seen, val_losses, linestyle="-.", label="验证损失")
     ax1.set_xlabel("Epochs")
-    ax1.set_ylabel("Loss")
+    ax1.set_ylabel("损失")
     ax1.legend(loc="upper right")
 
-    # Create a second x-axis for tokens seen
-    ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
-    ax2.plot(tokens_seen, train_losses, alpha=0)  # Invisible plot for aligning ticks
-    ax2.set_xlabel("Tokens seen")
+    # 为tokens seen创建第二个x轴
+    ax2 = ax1.twiny()  # 创建一个共享y轴的第二个x轴
+    ax2.plot(tokens_seen, train_losses, alpha=0)  # 用于对齐刻度的不可见图
+    ax2.set_xlabel("已处理的token数")
 
-    fig.tight_layout()  # Adjust layout to make room
+    fig.tight_layout()  # 调整布局
     plot_name = "loss-plot-standalone.pdf"
-    print(f"Plot saved as {plot_name}")
+    print(f"图表保存为 {plot_name}")
     plt.savefig(plot_name)
     # plt.show()
 
 
 def main(test_mode=False):
+    """主函数
+    
+    参数:
+        test_mode: 是否以测试模式运行
+    """
     #######################################
-    # Print package versions
+    # 打印包版本
     #######################################
     print()
     pkgs = [
-        "matplotlib",  # Plotting library
-        "tiktoken",    # Tokenizer
-        "torch",       # Deep learning library
-        "tqdm",        # Progress bar
-        "tensorflow",  # For OpenAI's pretrained weights
+        "matplotlib",  # 绘图库
+        "tiktoken",    # 分词器
+        "torch",       # 深度学习库
+        "tqdm",        # 进度条
+        "tensorflow",  # 用于OpenAI预训练权重
     ]
     for p in pkgs:
-        print(f"{p} version: {version(p)}")
+        print(f"{p} 版本: {version(p)}")
     print(50*"-")
 
     #######################################
-    # Download and prepare dataset
+    # 下载并准备数据集
     #######################################
     file_path = "instruction-data.json"
     url = "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch07/01_main-chapter-code/instruction-data.json"
     data = download_and_load_file(file_path, url)
 
-    train_portion = int(len(data) * 0.85)  # 85% for training
-    test_portion = int(len(data) * 0.1)    # 10% for testing
+    train_portion = int(len(data) * 0.85)  # 85%用于训练
+    test_portion = int(len(data) * 0.1)    # 10%用于测试
 
     train_data = data[:train_portion]
     test_data = data[train_portion:train_portion + test_portion]
     val_data = data[train_portion + test_portion:]
 
-    # Use very small subset for testing purposes
+    # 测试模式下使用很小的子集
     if args.test_mode:
         train_data = train_data[:10]
         val_data = val_data[:10]
         test_data = test_data[:10]
 
-    print("Training set length:", len(train_data))
-    print("Validation set length:", len(val_data))
-    print("Test set length:", len(test_data))
+    print("训练集大小:", len(train_data))
+    print("验证集大小:", len(val_data))
+    print("测试集大小:", len(test_data))
     print(50*"-")
 
     tokenizer = tiktoken.get_encoding("gpt2")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device:", device)
+    print("设备:", device)
     print(50*"-")
 
     customized_collate_fn = partial(custom_collate_fn, device=device, allowed_max_length=1024)
@@ -218,32 +259,29 @@ def main(test_mode=False):
     )
 
     #######################################
-    # Load pretrained model
+    # 加载预训练模型
     #######################################
 
-    # Small GPT model for testing purposes
+    # 测试用的小型GPT模型
     if args.test_mode:
         BASE_CONFIG = {
-            "vocab_size": 50257,
-            "context_length": 120,
-            "drop_rate": 0.0,
-            "qkv_bias": False,
-            "emb_dim": 12,
-            "n_layers": 1,
-            "n_heads": 2
+            "vocab_size": 50257,     # 词汇表大小
+            "context_length": 120,   # 上下文长度
+            "drop_rate": 0.0,        # 丢弃率
+            "qkv_bias": False        # 查询-键-值偏置
         }
         model = GPTModel(BASE_CONFIG)
         model.eval()
         device = "cpu"
-        CHOOSE_MODEL = "Small test model"
+        CHOOSE_MODEL = "小型测试模型"
 
-    # Code as it is used in the main chapter
+    # 主章节中使用的代码
     else:
         BASE_CONFIG = {
-            "vocab_size": 50257,     # Vocabulary size
-            "context_length": 1024,  # Context length
-            "drop_rate": 0.0,        # Dropout rate
-            "qkv_bias": True         # Query-key-value bias
+            "vocab_size": 50257,     # 词汇表大小
+            "context_length": 1024,  # 上下文长度
+            "drop_rate": 0.0,        # 丢弃率
+            "qkv_bias": True         # 查询-键-值偏置
         }
 
         model_configs = {
@@ -265,19 +303,19 @@ def main(test_mode=False):
         model.eval()
         model.to(device)
 
-    print("Loaded model:", CHOOSE_MODEL)
+    print("加载模型:", CHOOSE_MODEL)
     print(50*"-")
 
     #######################################
-    # Finetuning the model
+    # 微调模型
     #######################################
-    print("Initial losses")
+    print("初始损失")
     with torch.no_grad():
         train_loss = calc_loss_loader(train_loader, model, device, num_batches=5)
         val_loss = calc_loss_loader(val_loader, model, device, num_batches=5)
 
-    print("   Training loss:", train_loss)
-    print("   Validation loss:", val_loss)
+    print("   训练损失:", train_loss)
+    print("   验证损失:", val_loss)
 
     start_time = time.time()
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.00005, weight_decay=0.1)
@@ -293,16 +331,16 @@ def main(test_mode=False):
 
     end_time = time.time()
     execution_time_minutes = (end_time - start_time) / 60
-    print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+    print(f"训练完成，耗时 {execution_time_minutes:.2f} 分钟。")
 
     epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
     plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
     print(50*"-")
 
     #######################################
-    # Saving results
+    # 保存结果
     #######################################
-    print("Generating responses")
+    print("生成响应")
     for i, entry in tqdm(enumerate(test_data), total=len(test_data)):
 
         input_text = format_input(entry)
@@ -321,12 +359,12 @@ def main(test_mode=False):
 
     test_data_path = "instruction-data-with-response-standalone.json"
     with open(test_data_path, "w") as file:
-        json.dump(test_data, file, indent=4)  # "indent" for pretty-printing
-    print(f"Responses saved as {test_data_path}")
+        json.dump(test_data, file, indent=4)  # "indent"用于美化输出
+    print(f"响应保存为 {test_data_path}")
 
     file_name = f"{re.sub(r'[ ()]', '', CHOOSE_MODEL) }-sft-standalone.pth"
     torch.save(model.state_dict(), file_name)
-    print(f"Model saved as {file_name}")
+    print(f"模型保存为 {file_name}")
 
 
 if __name__ == "__main__":
@@ -334,14 +372,14 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Finetune a GPT model for classification"
+        description="微调GPT模型用于分类任务"
     )
     parser.add_argument(
         "--test_mode",
         default=False,
         action="store_true",
-        help=("This flag runs the model in test mode for internal testing purposes. "
-              "Otherwise, it runs the model as it is used in the chapter (recommended).")
+        help=("此标志以测试模式运行模型用于内部测试。"
+              "否则，将按照章节中的方式运行模型（推荐）。")
     )
     args = parser.parse_args()
 
