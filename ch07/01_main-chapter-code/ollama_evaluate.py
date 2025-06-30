@@ -1,9 +1,9 @@
-# Copyright (c) Sebastian Raschka under Apache License 2.0 (see LICENSE.txt).
-# Source for "Build a Large Language Model From Scratch"
+# 版权所有 (c) Sebastian Raschka，基于Apache License 2.0许可(详见LICENSE.txt)
+# 书籍《从零开始构建大语言模型》源代码
 #   - https://www.manning.com/books/build-a-large-language-model-from-scratch
-# Code: https://github.com/rasbt/LLMs-from-scratch
+# 代码仓库: https://github.com/rasbt/LLMs-from-scratch
 #
-# A minimal instruction finetuning file based on the code in chapter 7
+# 基于第7章代码的最小指令微调文件
 
 import json
 import psutil
@@ -12,30 +12,30 @@ import urllib.request
 
 
 def query_model(prompt, model="llama3", url="http://localhost:11434/api/chat"):
-    # Create the data payload as a dictionary
+    # 创建数据负载字典
     data = {
         "model": model,
         "messages": [
             {"role": "user", "content": prompt}
         ],
-        "options": {     # Settings below are required for deterministic responses
+        "options": {     # 以下设置为确保确定性响应
             "seed": 123,
             "temperature": 0,
             "num_ctx": 2048
         }
     }
 
-    # Convert the dictionary to a JSON formatted string and encode it to bytes
+    # 将字典转换为JSON格式字符串并编码为字节
     payload = json.dumps(data).encode("utf-8")
 
-    # Create a request object, setting the method to POST and adding necessary headers
+    # 创建请求对象，设置POST方法并添加必要头部
     request = urllib.request.Request(url, data=payload, method="POST")
     request.add_header("Content-Type", "application/json")
 
-    # Send the request and capture the response
+    # 发送请求并捕获响应
     response_data = ""
     with urllib.request.urlopen(request) as response:
-        # Read and decode the response
+        # 读取并解码响应
         while True:
             line = response.readline().decode("utf-8")
             if not line:
@@ -47,6 +47,7 @@ def query_model(prompt, model="llama3", url="http://localhost:11434/api/chat"):
 
 
 def check_if_running(process_name):
+    """检查指定进程是否正在运行"""
     running = False
     for proc in psutil.process_iter(["name"]):
         if process_name in proc.info["name"]:
@@ -56,6 +57,7 @@ def check_if_running(process_name):
 
 
 def format_input(entry):
+    """格式化指令和输入用于提示"""
     instruction_text = (
         f"Below is an instruction that describes a task. "
         f"Write a response that appropriately completes the request."
@@ -68,15 +70,19 @@ def format_input(entry):
 
 
 def main(file_path):
+    """主函数：评估模型响应"""
+    # 检查Ollama是否运行
     ollama_running = check_if_running("ollama")
 
     if not ollama_running:
-        raise RuntimeError("Ollama not running. Launch ollama before proceeding.")
+        raise RuntimeError("Ollama未运行，请先启动Ollama")
     print("Ollama running:", check_if_running("ollama"))
 
+    # 加载测试数据
     with open(file_path, "r") as file:
         test_data = json.load(file)
 
+    # 生成模型评分
     model = "llama3"
     scores = generate_model_scores(test_data, "model_response", model)
     print(f"Number of scores: {len(scores)} of {len(test_data)}")
@@ -84,11 +90,13 @@ def main(file_path):
 
 
 def generate_model_scores(json_data, json_key, model="llama3"):
+    """为模型响应生成评分"""
     scores = []
-    for entry in tqdm(json_data, desc="Scoring entries"):
+    for entry in tqdm(json_data, desc="评分条目"):
         if entry[json_key] == "":
             scores.append(0)
         else:
+            # 构建评分提示
             prompt = (
                 f"Given the input `{format_input(entry)}` "
                 f"and correct output `{entry['output']}`, "
@@ -100,7 +108,7 @@ def generate_model_scores(json_data, json_key, model="llama3"):
             try:
                 scores.append(int(score))
             except ValueError:
-                print(f"Could not convert score: {score}")
+                print(f"无法转换评分: {score}")
                 continue
 
     return scores
